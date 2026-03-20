@@ -1,5 +1,6 @@
-use std::{collections::HashMap, env::join_paths, fmt::format, fs, hash::Hash, io::{Read, Write}, net::{TcpListener, TcpStream}, sync::LazyLock};
+use std::{collections::HashMap, env::join_paths, fmt::format, fs, hash::Hash, sync::LazyLock};
 use sqlite::{self, Connection, State};
+use tokio::{self, io::AsyncReadExt, io::AsyncWriteExt, net::TcpStream, net::TcpListener};
 
 static file_paths : LazyLock<HashMap<&'static str, &'static str>> =
  LazyLock::new(|| {
@@ -27,9 +28,9 @@ fn content_type(s : &str) -> &str {
     }
 }
 
-fn handleClient(s : &mut TcpStream) {
+async fn handleClient(s : &mut TcpStream) {
     let mut buffer = [0u8; 1024];
-    let bytes_read : usize = s.read(&mut buffer).unwrap();
+    let bytes_read : usize = s.read(&mut buffer).await.unwrap();
     let req = String::from_utf8_lossy(&buffer[..bytes_read]);
     let split_req : Vec<&str> = req.split(' ').collect();
     let method = split_req.get(0).unwrap();
@@ -44,7 +45,7 @@ fn handleClient(s : &mut TcpStream) {
         }
     };
 
-    let contents = fs::read(file).expect("Error reading file");
+    let contents = tokio::fs::read(file).await.expect("Error reading file");
 
     let ct = content_type(&file);
 
@@ -55,19 +56,22 @@ fn handleClient(s : &mut TcpStream) {
     ct, contents.len()
     );
 
-    s.write(&resp.as_bytes());
-    s.write(&contents).unwrap();
+    let _ = s.write(&resp.as_bytes()).await.unwrap();
+    let _ = s.write(&contents).await.unwrap();
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
 
-    let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:8080").await.unwrap();
 
-    for stream in listener.incoming() {
-        let mut stream = stream.unwrap();
+    loop {
 
-        handleClient(&mut stream);
+    let (mut s, addr) = listener.accept().await.unwrap();
+
+        handleClient(&mut s).await;
+
+        println!("Handling client");
 
     }
-
 }

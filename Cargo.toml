@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 sqlite = "0.37"
+tokio = { version = "1.5", features = ["full"] }
